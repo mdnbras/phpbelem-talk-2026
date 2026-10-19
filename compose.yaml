@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: talk
+      POSTGRES_USER: talk
+      POSTGRES_PASSWORD: talk-local
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U talk -d talk]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  app:
+    build: .
+    environment:
+      DB_DSN: pgsql:host=db;port=5432;dbname=talk
+      DB_USER: talk
+      DB_PASSWORD: talk-local
+      DEMO_MODE: '1'
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    image: nginx:1.28-alpine
+    ports: ['127.0.0.1:8080:80']
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [app]
+  tests:
+    image: python:3.12-slim
+    profiles: [tools]
+    volumes: ['./tests:/tests:ro']
+    environment:
+      BASE_URL: http://web
+    command: [python, /tests/scenarios.py, all]
+    depends_on: [web]
+volumes:
+  pgdata:
